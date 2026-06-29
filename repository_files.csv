@@ -1,0 +1,8 @@
+ファイル名,種類,役割,デプロイ必須,サイズ(bytes),行数,備考
+app.py,Python,"Webアプリ本体。パスワード認証＋yt-dlpジョブ＋進捗API＋mp3個別DL/一括ZIP配信",必須,11073,264,"環境変数PORT/APP_PASSWORD等を読む。0.0.0.0で待受"
+index.html,HTML,"スマホ最適化UI。ログイン画面・貼り付け・進捗表示・各曲「保存」・全部ZIP",必須,12695,218,"app.pyが配信。単体ファイル"
+Dockerfile,Docker,"ビルド定義。ffmpeg導入＋yt-dlp(pip)＋app起動",必須,416,18,"python:3.12-slimベース。RenderがDocker自動検出"
+requirements.txt,設定,"pip依存(yt-dlp)",必須,17,1,"yt-dlp>=2025.1.1"
+render.yaml,設定,"Render用デプロイ定義(無料プラン/環境変数)",任意,237,9,"APP_PASSWORDはRender画面で各自設定"
+.dockerignore,設定,"イメージに含めない物の指定(downloads等)",任意,48,5,"ビルド軽量化用"
+デプロイ手順.md,ドキュメント,"Render/Railway/Fly手順＋環境変数表＋注意点",任意,3858,71,"GitHub→Renderの最短手順を記載"
