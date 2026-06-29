@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# App data
+downloads/
+run.log
+
+# OS
+.DS_Store
+
+# Env / secrets
+.env
+*.env

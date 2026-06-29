@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: dj-track-downloader
+    runtime: docker
+    plan: free
+    envVars:
+      - key: APP_PASSWORD
+        sync: false   # ★Render管理画面で各自の秘密パスワードを設定
+    autoDeploy: true

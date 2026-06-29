@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>🎧 DJ Track Downloader</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1e2229;--line:#2a2f3a;--text:#e8eaf0;
+    --muted:#9aa3b2;--accent:#ff7a18;--accent2:#ff5e62;--ok:#39d98a;--url:#4aa8ff;
+    --search:#c08bff;--run:#ffd166;--miss:#ff6b6b;}
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    background:radial-gradient(900px 500px at 80% -10%,#22150c 0%,var(--bg) 45%);
+    color:var(--text);line-height:1.6;min-height:100vh;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);}
+  .wrap{max-width:640px;margin:0 auto;padding:20px 16px 60px}
+  header{display:flex;align-items:center;gap:10px}
+  header .logo{font-size:30px}
+  h1{font-size:20px;margin:0}
+  .sub{color:var(--muted);font-size:13px;margin:6px 0 18px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:16px;padding:16px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  textarea{width:100%;min-height:150px;resize:vertical;padding:13px 14px;border-radius:12px;
+    background:#0e1116;color:var(--text);border:1px solid var(--line);
+    font-family:ui-monospace,Menlo,monospace;font-size:16px;line-height:1.7}
+  textarea:focus{outline:none;border-color:var(--accent)}
+  input[type=password]{width:100%;padding:14px;border-radius:12px;background:#0e1116;color:var(--text);
+    border:1px solid var(--line);font-size:16px}
+  .stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;
+    background:#0e1116;border:1px solid var(--line);font-size:12px;color:var(--muted)}
+  .chip b{color:var(--text)}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .dot.url{background:var(--url)}.dot.search{background:var(--search)}.dot.total{background:var(--ok)}
+  button{border:none;cursor:pointer;font-size:16px;font-weight:700;padding:15px 18px;border-radius:13px;
+    transition:transform .08s,filter .15s;width:100%}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45}
+  .row{display:flex;gap:10px;margin-top:14px}
+  .row button{width:auto;flex:1}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+  .btn-ghost{background:#0e1116;color:var(--text);border:1px solid var(--line)}
+  .btn-stop{background:#2a1414;color:#ff9b9b;border:1px solid #5a2a2a}
+  .progwrap{height:12px;background:#0e1116;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:6px 0 12px}
+  .progbar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--ok));transition:width .4s}
+  .summary{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin-bottom:4px}
+  .summary b{font-size:16px}
+  .tlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .trow{display:flex;gap:10px;align-items:center;padding:10px 12px;background:#0e1116;border:1px solid var(--line);border-radius:11px;font-size:14px}
+  .tlabel{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;flex-shrink:0}
+  .b-pending{background:#1a1e26;color:var(--muted)}.b-downloading{background:rgba(255,209,102,.15);color:var(--run)}
+  .b-done{background:rgba(57,217,138,.15);color:var(--ok)}.b-missing{background:rgba(255,107,107,.15);color:var(--miss)}
+  .kind{font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;flex-shrink:0}
+  .k-url{background:rgba(74,168,255,.15);color:var(--url)}.k-search{background:rgba(192,139,255,.15);color:var(--search)}
+  .save{display:inline-block;flex-shrink:0;text-decoration:none;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#fff;font-weight:800;font-size:13px;padding:8px 12px;border-radius:9px}
+  h2{font-size:15px;margin:0 0 10px}
+  .note{color:var(--muted);font-size:12px;margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+  .overlay{position:fixed;inset:0;background:rgba(8,10,14,.92);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .overlay .card{max-width:380px;width:100%}
+  .hidden{display:none!important}
+  .err{color:#ffb3b3;font-size:13px;margin-top:8px;min-height:18px}
+  .logbox{margin-top:12px;max-height:150px;overflow:auto;background:#080a0d;border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;font-family:ui-monospace,monospace;font-size:11px;color:#9fb0c0;white-space:pre-wrap;display:none}
+  .logbox.show{display:block}
+</style>
+</head>
+<body>
+
+<!-- ログイン -->
+<div class="overlay hidden" id="login">
+  <div class="card">
+    <header><div class="logo">🎧</div><h1>ログイン</h1></header>
+    <p class="sub">このアプリはパスワードで保護されています。</p>
+    <input type="password" id="pw" placeholder="パスワード" autocomplete="current-password">
+    <div class="err" id="loginErr"></div>
+    <div style="margin-top:12px"><button class="btn-primary" id="loginBtn">入る</button></div>
+  </div>
+</div>
+
+<!-- 未設定の警告 -->
+<div class="overlay hidden" id="setup">
+  <div class="card">
+    <header><div class="logo">⚙️</div><h1>セットアップ未完了</h1></header>
+    <p class="sub">サーバーに環境変数 <b>APP_PASSWORD</b> が設定されていません。ホスティング側で設定してから再読み込みしてください（手順は「デプロイ手順.md」参照）。</p>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <header><div class="logo">🎧</div><h1>DJ Track Downloader</h1></header>
+  <p class="sub">SoundCloud の <b>URL</b> か <b>曲名リスト</b>（Artist - Title）を貼って開始。完了した曲は「保存」から<b>ファイルに保存</b>できます。</p>
+
+  <div class="card" id="inputCard">
+    <textarea id="input" placeholder="例：
+https://soundcloud.com/artist/track
+Alok - Hear Me Now
+Kölsch - Grey"></textarea>
+    <div class="stats">
+      <span class="chip"><span class="dot total"></span>合計 <b id="cTotal">0</b></span>
+      <span class="chip"><span class="dot url"></span>URL <b id="cUrl">0</b></span>
+      <span class="chip"><span class="dot search"></span>検索 <b id="cSearch">0</b></span>
+    </div>
+    <div style="margin-top:14px"><button class="btn-primary" id="startBtn">⬇ ダウンロード開始</button></div>
+    <div class="row">
+      <button class="btn-ghost" id="sampleBtn">サンプル</button>
+      <button class="btn-ghost" id="clearBtn">クリア</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="progCard">
+    <h2>進捗</h2>
+    <div class="summary">
+      <span>取得 <b id="sDone">0</b></span><span>残り <b id="sLeft">0</b></span>
+      <span>パス <b id="sPass">-</b></span><span id="sState" style="color:var(--run)">準備中…</span>
+    </div>
+    <div class="progwrap"><div class="progbar" id="progbar"></div></div>
+    <div class="tlist" id="tlist"></div>
+    <div class="row">
+      <button class="btn-stop" id="stopBtn">■ 停止</button>
+      <button class="btn-ghost" id="logBtn">ログ</button>
+    </div>
+    <div id="zipWrap" class="hidden" style="margin-top:10px">
+      <a class="save" id="zipLink" style="width:100%;text-align:center;display:block" href="/zip">📦 全部まとめてZIP保存</a>
+    </div>
+    <div class="logbox" id="logbox"></div>
+    <p class="note">⚠ レート制限を避けるため間隔を空けて取得します（放置でOK）。保存した音源は私的利用の範囲で。気に入った曲は購入を推奨します。</p>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const ANY_URL = /^https?:\/\//i;
+const SAMPLE = `https://soundcloud.com/agentsoftime/zodiac
+Alok - Hear Me Now
+ANNA - Hidden Beauties
+Kölsch - Grey
+Vintage Culture - Commotion`;
+let polling=null;
+
+function parse(){return $('input').value.split(/\r?\n/).map(s=>s.trim()).filter(s=>s&&!s.startsWith('#')).map(s=>({t:s,url:ANY_URL.test(s)}));}
+function counts(){const it=parse();$('cTotal').textContent=it.length;$('cUrl').textContent=it.filter(x=>x.url).length;$('cSearch').textContent=it.filter(x=>!x.url).length;}
+function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+async function boot(){
+  let me;
+  try{ me = await (await fetch('/api/me')).json(); }
+  catch(e){ me = {authed:false,password_set:false}; }
+  if(!me.password_set){ $('setup').classList.remove('hidden'); return; }
+  if(!me.authed){ $('login').classList.remove('hidden'); $('pw').focus(); return; }
+  showApp();
+}
+function showApp(){
+  $('login').classList.add('hidden'); $('setup').classList.add('hidden');
+  $('app').style.display='block'; counts();
+  // 実行中ジョブに復帰
+  fetch('/api/status').then(r=>r.ok?r.json():null).then(st=>{
+    if(st && (st.running || (st.items&&st.items.length))){ $('progCard').classList.remove('hidden'); render(st); if(st.running) startPoll(); refreshFiles(); }
+  }).catch(()=>{});
+}
+
+async function login(){
+  $('loginErr').textContent='';
+  const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('pw').value})});
+  if(r.ok){ showApp(); }
+  else { $('loginErr').textContent='パスワードが違います。'; }
+}
+
+async function start(){
+  const it=parse(); if(!it.length){alert('URL か 曲名を入力してください。');return;}
+  $('startBtn').disabled=true;
+  try{
+    const r=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:$('input').value})});
+    if(r.status===401){ location.reload(); return; }
+    if(r.status===409){ alert('すでに実行中です。'); }
+    else if(!r.ok){ const e=await r.json().catch(()=>({})); alert('開始できません: '+(e.error||r.status)); $('startBtn').disabled=false; return; }
+    $('progCard').classList.remove('hidden'); startPoll();
+  }catch(e){ alert('サーバーに接続できません。'); $('startBtn').disabled=false; }
+}
+
+function badge(s){const m={pending:['b-pending','待機'],downloading:['b-downloading','取得中'],done:['b-done','完了'],missing:['b-missing','再試行待ち']};const[c,t]=m[s]||m.pending;return `<span class="badge ${c}">${t}</span>`;}
+
+function render(st){
+  const items=st.items||[]; const done=items.filter(i=>i.status==='done').length; const total=items.length||1;
+  $('sDone').textContent=done; $('sLeft').textContent=total-done; $('sPass').textContent=st.pass||'-';
+  $('progbar').style.width=Math.round(done/total*100)+'%';
+  $('sState').textContent = st.running?'ダウンロード中…':(st.finished?'完了 🎉':'準備中…');
+  $('sState').style.color = st.finished&&!st.running?'var(--ok)':'var(--run)';
+  $('tlist').innerHTML=items.map(i=>{
+    const k=i.kind==='url'?'<span class="kind k-url">URL</span>':'<span class="kind k-search">検索</span>';
+    const save = i.status==='done'&&i.file?`<a class="save" href="/file/${encodeURIComponent(i.file)}" download>保存</a>`:badge(i.status);
+    return `<div class="trow">${k}<span class="tlabel">${esc(i.label)}</span>${save}</div>`;
+  }).join('');
+  $('logbox').textContent=(st.log||[]).join('\n');
+  if($('logbox').classList.contains('show')) $('logbox').scrollTop=$('logbox').scrollHeight;
+  if(done>0){ $('zipWrap').classList.remove('hidden'); }
+  if(!st.running && st.finished){ stopPoll(); $('startBtn').disabled=false; }
+}
+async function tick(){ try{ const r=await fetch('/api/status'); if(r.status===401){location.reload();return;} render(await r.json()); }catch(e){} }
+function startPoll(){ if(polling)return; tick(); polling=setInterval(tick,1500); }
+function stopPoll(){ clearInterval(polling); polling=null; }
+function refreshFiles(){ /* status側でfileを持つので個別取得は不要 */ }
+
+$('loginBtn').addEventListener('click',login);
+$('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+$('startBtn').addEventListener('click',start);
+$('sampleBtn').addEventListener('click',()=>{$('input').value=SAMPLE;counts();});
+$('clearBtn').addEventListener('click',()=>{$('input').value='';counts();});
+$('stopBtn').addEventListener('click',()=>fetch('/api/stop',{method:'POST'}));
+$('logBtn').addEventListener('click',()=>$('logbox').classList.toggle('show'));
+$('input').addEventListener('input',counts);
+boot();
+</script>
+</body>
+</html>
