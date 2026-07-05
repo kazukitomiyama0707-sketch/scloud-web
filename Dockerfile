@@ -10,6 +10,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py index.html ./
+COPY lists ./lists
 
 # 多くのホストは $PORT を渡す（未指定なら 8765）
 ENV PORT=8765
