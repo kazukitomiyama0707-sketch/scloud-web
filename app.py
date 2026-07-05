@@ -162,17 +162,10 @@ class Handler(BaseHTTPRequestHandler):
         return d
 
     def _authed(self):
-        if not PASSWORD: return False          # パスワード未設定＝保護のためロック
-        return self._cookies().get("sess") == EXPECTED
+        return True                            # ログイン不要（誰でも利用可）
 
     def _need_auth(self):
-        if not PASSWORD:
-            self._send(503, {"error": "no_password",
-                             "message": "サーバーに APP_PASSWORD が設定されていません。"})
-            return True
-        if not self._authed():
-            self._send(401, {"error": "unauthorized"}); return True
-        return False
+        return False                           # 認証スキップ
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -183,7 +176,7 @@ class Handler(BaseHTTPRequestHandler):
             except FileNotFoundError:
                 self._send(404, "index.html not found", "text/plain; charset=utf-8")
         elif path == "/api/me":
-            self._send(200, {"authed": self._authed(), "password_set": bool(PASSWORD)})
+            self._send(200, {"authed": True, "password_set": True})  # ログイン不要
         elif path == "/api/status":
             if self._need_auth(): return
             with LOCK:
