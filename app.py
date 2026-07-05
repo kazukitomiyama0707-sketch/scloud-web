@@ -7,8 +7,8 @@
 #  ・スマホから各曲を「ファイルに保存」/ まとめてZIP
 #  依存: yt-dlp, ffmpeg（Dockerfile で導入）／外部 pip Web フレームワーク不要
 # =============================================================
-import os, re, io, json, time, html, base64, hashlib, zipfile, threading, subprocess
-from urllib.parse import unquote, quote
+import os, re, io, json, time, html, base64, hashlib, zipfile, threading, subprocess, csv, glob
+from urllib.parse import unquote, quote, parse_qs, urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ---------------- 設定（環境変数で上書き可） ----------------
@@ -131,6 +131,83 @@ def _finish():
         STATE["running"] = False; STATE["finished"] = True
     log("=== 完了 ===")
 
+# ---------------- CSVリスト（同梱の lists/ を読む） ----------------
+LISTS_DIR = os.path.join(HERE, "lists")
+
+# 列名ゆらぎを吸収（英/日）
+COL_TITLE  = ("title", "曲名", "track", "name")
+COL_ARTIST = ("artist", "アーティスト名", "アーティスト", "uploader")
+COL_URL    = ("url", "soundcloud_url", "link")
+
+def _pick(row, keys):
+    for k in keys:
+        if k in row and str(row[k]).strip():
+            return str(row[k]).strip()
+    return ""
+
+def list_catalog():
+    """同梱CSVの一覧（表示名＋件数）"""
+    out = []
+    for path in sorted(glob.glob(os.path.join(LISTS_DIR, "*.csv"))):
+        fid = os.path.basename(path)
+        try:
+            with open(path, encoding="utf-8-sig", newline="") as fh:
+                n = sum(1 for _ in csv.DictReader(fh))
+        except Exception:
+            n = 0
+        name = re.sub(r'\.csv$', '', fid)
+        name = re.sub(r'_soundcloud_tracks$', '', name).replace('_', ' ')
+        out.append({"id": fid, "name": name, "count": n})
+    return out
+
+def read_list(fid):
+    """1つのCSVを {title, artist, url, query} のリストに正規化"""
+    path = os.path.join(LISTS_DIR, os.path.basename(fid))
+    if not os.path.abspath(path).startswith(os.path.abspath(LISTS_DIR)) or not os.path.isfile(path):
+        return None
+    items = []
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        for row in csv.DictReader(fh):
+            title  = _pick(row, COL_TITLE)
+            artist = _pick(row, COL_ARTIST)
+            url    = _pick(row, COL_URL)
+            if not (title or url):
+                continue
+            query = " ".join(x for x in (artist, title) if x).strip()
+            items.append({"title": title or url, "artist": artist,
+                          "url": url, "query": query, "has_url": bool(url)})
+    return items
+
+def search_soundcloud(query, n):
+    """yt-dlp でSoundCloudをライブ検索。webpage_url（正規URL）と再生時間まで取得。"""
+    n = max(1, min(int(n), 50))
+    # --flat-playlist を使わずフル解決 → soundcloud.com の正規URLが取れDLで確実
+    cmd = ["yt-dlp", "--dump-json", "--no-warnings", "--ignore-errors",
+           "--socket-timeout", "30", "--sleep-requests", "1",
+           f"scsearch{n}:{query}"]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        log(f"search error: {e}"); return []
+    out = []
+    for line in p.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            d = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        url = d.get("webpage_url") or d.get("url") or ""
+        if "api.soundcloud.com" in url:         # 正規URLでなければDL不可なので除外
+            continue
+        title = d.get("title") or url
+        dur = d.get("duration")
+        out.append({"title": title, "artist": d.get("uploader", ""),
+                    "url": url, "query": title, "has_url": bool(url),
+                    "duration": int(dur) if dur else None})
+    return out
+
 # ---------------- HTTP ----------------
 def list_files():
     out = []
@@ -185,6 +262,23 @@ class Handler(BaseHTTPRequestHandler):
                     "items": [{k: it[k] for k in ("idx","kind","target","label","status","file")} for it in STATE["items"]],
                     "log": STATE["log"][-120:],
                 })
+        elif path == "/api/lists":
+            if self._need_auth(): return
+            self._send(200, {"lists": list_catalog()})
+        elif path == "/api/list":
+            if self._need_auth(): return
+            q = parse_qs(urlparse(self.path).query)
+            fid = (q.get("id") or [""])[0]
+            items = read_list(fid)
+            if items is None: self._send(404, {"error": "not found"}); return
+            self._send(200, {"items": items})
+        elif path == "/api/search":
+            if self._need_auth(): return
+            q = parse_qs(urlparse(self.path).query)
+            query = (q.get("q") or [""])[0].strip()
+            n = (q.get("n") or ["10"])[0]
+            if not query: self._send(400, {"error": "no query"}); return
+            self._send(200, {"items": search_soundcloud(query, n)})
         elif path == "/api/files":
             if self._need_auth(): return
             self._send(200, {"files": list_files()})

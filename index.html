@@ -67,6 +67,23 @@
   .logbox{margin-top:12px;max-height:150px;overflow:auto;background:#080a0d;border:1px solid var(--line);
     border-radius:10px;padding:10px 12px;font-family:ui-monospace,monospace;font-size:11px;color:#9fb0c0;white-space:pre-wrap;display:none}
   .logbox.show{display:block}
+  .tabs{display:flex;gap:8px;margin-bottom:12px}
+  .tab{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0e1116;color:#9fb0c0;font-size:14px;cursor:pointer}
+  .tab.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent}
+  select,#q{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0e1116;color:#e8eef5;font-size:15px}
+  .srow{display:flex;gap:8px;flex-wrap:wrap}
+  .srow #q{flex:1;min-width:150px}
+  .srow select{width:auto}
+  .srow .btn-primary{width:auto;padding:11px 18px}
+  .selbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0 8px}
+  .selbar label{display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer}
+  .selbar .btn-primary{width:auto;padding:9px 16px;margin-left:auto}
+  .crow{display:flex;gap:10px;align-items:center;padding:9px 12px;background:#0e1116;border:1px solid var(--line);border-radius:11px;font-size:14px;cursor:pointer}
+  .crow input{width:18px;height:18px;flex-shrink:0}
+  .crow .meta{flex:1;min-width:0}
+  .crow .ttl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crow .sub2{font-size:12px;color:#8494a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .muted{color:#8494a4;font-size:13px;padding:8px 2px}
 </style>
 </head>
 <body>
@@ -94,7 +111,34 @@
   <header><div class="logo">🎧</div><h1>DJ Track Downloader</h1></header>
   <p class="sub">SoundCloud の <b>URL</b> か <b>曲名リスト</b>（Artist - Title）を貼って開始。完了した曲は「保存」から<b>ファイルに保存</b>できます。</p>
 
+  <div class="card" id="browseCard">
+    <div class="tabs">
+      <button class="tab active" id="tabList">📋 リストから</button>
+      <button class="tab" id="tabSearch">🔎 SoundCloud検索</button>
+    </div>
+    <div id="listMode">
+      <select id="listSel"><option value="">リストを選択…</option></select>
+    </div>
+    <div id="searchMode" class="hidden">
+      <div class="srow">
+        <input id="q" type="text" placeholder="DJ名・キーワード（例: I Hate Models）">
+        <select id="qn"><option value="10">10曲</option><option value="20">20曲</option><option value="30">30曲</option><option value="50">50曲</option></select>
+        <button class="btn-primary" id="searchBtn">検索</button>
+      </div>
+    </div>
+    <div id="resultWrap" class="hidden">
+      <div class="selbar">
+        <label><input type="checkbox" id="selAll"> 全選択</label>
+        <span><b id="selCount">0</b> 曲選択中</span>
+        <button class="btn-primary" id="dlSel">⬇ 選択をダウンロード</button>
+      </div>
+      <div class="tlist" id="results"></div>
+    </div>
+    <div id="browseMsg" class="muted hidden"></div>
+  </div>
+
   <div class="card" id="inputCard">
+    <p class="sub" style="margin:0 0 10px">または直接 URL / 曲名を貼り付け：</p>
     <textarea id="input" placeholder="例：
 https://soundcloud.com/artist/track
 Alok - Hear Me Now
@@ -156,6 +200,7 @@ async function boot(){
 function showApp(){
   $('login').classList.add('hidden'); $('setup').classList.add('hidden');
   $('app').style.display='block'; counts();
+  loadLists();
   // 実行中ジョブに復帰
   fetch('/api/status').then(r=>r.ok?r.json():null).then(st=>{
     if(st && (st.running || (st.items&&st.items.length))){ $('progCard').classList.remove('hidden'); render(st); if(st.running) startPoll(); refreshFiles(); }
@@ -203,6 +248,80 @@ async function tick(){ try{ const r=await fetch('/api/status'); if(r.status===40
 function startPoll(){ if(polling)return; tick(); polling=setInterval(tick,1500); }
 function stopPoll(){ clearInterval(polling); polling=null; }
 function refreshFiles(){ /* status側でfileを持つので個別取得は不要 */ }
+
+// ---------- 探す / 検索 / 選択 ----------
+let RESULTS=[];
+function fmtDur(s){ if(!s) return ''; const m=Math.floor(s/60), ss=String(s%60).padStart(2,'0'); return `${m}:${ss}`; }
+
+async function loadLists(){
+  try{
+    const {lists}=await (await fetch('/api/lists')).json();
+    const sel=$('listSel');
+    lists.forEach(l=>{ const o=document.createElement('option'); o.value=l.id; o.textContent=`${l.name}（${l.count}曲）`; sel.appendChild(o); });
+  }catch(e){}
+}
+function switchTab(mode){
+  const isList = mode==='list';
+  $('tabList').classList.toggle('active',isList);
+  $('tabSearch').classList.toggle('active',!isList);
+  $('listMode').classList.toggle('hidden',!isList);
+  $('searchMode').classList.toggle('hidden',isList);
+}
+function showBrowseMsg(t){ const m=$('browseMsg'); if(!t){m.classList.add('hidden');return;} m.textContent=t; m.classList.remove('hidden'); }
+
+function renderResults(items){
+  RESULTS=items||[];
+  if(!RESULTS.length){ $('resultWrap').classList.add('hidden'); showBrowseMsg('結果が見つかりませんでした。'); return; }
+  showBrowseMsg('');
+  $('resultWrap').classList.remove('hidden');
+  $('selAll').checked=false;
+  $('results').innerHTML=RESULTS.map((it,i)=>{
+    const sub=[it.artist, fmtDur(it.duration)].filter(Boolean).join(' · ');
+    return `<label class="crow"><input type="checkbox" data-i="${i}" class="chk">`+
+           `<span class="meta"><div class="ttl">${esc(it.title||'')}</div>`+
+           (sub?`<div class="sub2">${esc(sub)}</div>`:'')+`</span></label>`;
+  }).join('');
+  document.querySelectorAll('.chk').forEach(c=>c.addEventListener('change',updateSel));
+  updateSel();
+}
+function updateSel(){
+  const n=document.querySelectorAll('.chk:checked').length;
+  $('selCount').textContent=n;
+}
+async function doSearch(){
+  const q=$('q').value.trim(); if(!q){ $('q').focus(); return; }
+  $('searchBtn').disabled=true; showBrowseMsg('検索中…'); $('resultWrap').classList.add('hidden');
+  try{
+    const n=$('qn').value;
+    const r=await fetch(`/api/search?q=${encodeURIComponent(q)}&n=${n}`);
+    const {items}=await r.json(); renderResults(items);
+  }catch(e){ showBrowseMsg('検索に失敗しました。'); }
+  $('searchBtn').disabled=false;
+}
+async function loadList(id){
+  if(!id){ $('resultWrap').classList.add('hidden'); showBrowseMsg(''); return; }
+  showBrowseMsg('読み込み中…'); $('resultWrap').classList.add('hidden');
+  try{
+    const r=await fetch(`/api/list?id=${encodeURIComponent(id)}`);
+    const {items}=await r.json(); renderResults(items);
+  }catch(e){ showBrowseMsg('リストの読み込みに失敗しました。'); }
+}
+function downloadSelected(){
+  const picked=[...document.querySelectorAll('.chk:checked')].map(c=>RESULTS[+c.dataset.i]);
+  if(!picked.length){ alert('曲を選択してください。'); return; }
+  const lines=picked.map(it=> it.has_url&&it.url ? it.url : it.query );
+  $('input').value=lines.join('\n'); counts();
+  start();
+  $('progCard')&&$('progCard').scrollIntoView({behavior:'smooth'});
+}
+
+$('tabList').addEventListener('click',()=>switchTab('list'));
+$('tabSearch').addEventListener('click',()=>switchTab('search'));
+$('listSel').addEventListener('change',e=>loadList(e.target.value));
+$('searchBtn').addEventListener('click',doSearch);
+$('q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
+$('selAll').addEventListener('change',e=>{ document.querySelectorAll('.chk').forEach(c=>c.checked=e.target.checked); updateSel(); });
+$('dlSel').addEventListener('click',downloadSelected);
 
 $('loginBtn').addEventListener('click',login);
 $('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
