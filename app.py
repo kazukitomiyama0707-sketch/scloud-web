@@ -58,7 +58,7 @@ def parse_input(text):
         else:
             kind, target = "search", re.sub(r'\s+', ' ', line.replace(',', ' ')).strip()
         items.append({"idx": idx, "kind": kind, "target": target, "label": line,
-                      "status": "pending", "dur": None, "file": None,
+                      "status": "pending", "dur": None, "file": None, "error": None,
                       "safe": safe_name(idx, line, kind)})
     return items
 
@@ -68,6 +68,31 @@ def existing_mp3(idx):
         if f.startswith(prefix) and f.lower().endswith(".mp3"):
             return os.path.join(OUTDIR, f)
     return None
+
+def classify_error(kind, text):
+    """yt-dlp の出力からエラー原因を短い日本語に分類"""
+    t = (text or "").lower()
+    if "429" in t or "too many requests" in t:
+        return "レート制限（混雑中）— 時間をおいて自動再試行します"
+    if "404" in t or "not found" in t:
+        return "見つかりません（404）— URLが無効/削除済みかも"
+    if "private" in t or "requires authentication" in t or "log in" in t or "login" in t:
+        return "非公開の曲（ログインが必要）"
+    if "geo" in t or "not available in your country" in t or "region" in t:
+        return "地域制限で再生不可"
+    if "this track is not available" in t or "video unavailable" in t or "unavailable" in t:
+        return "この曲は現在利用できません"
+    if "no video formats" in t or "requested format" in t or "no formats" in t:
+        return "ダウンロード可能な音源フォーマットが無い（配信のみ等）"
+    if "unable to download webpage" in t or "unable to extract" in t:
+        return "ページ取得に失敗（接続不安定/一時的な障害）"
+    if kind == "search" and ("no video" in t or "no results" in t or not t.strip()):
+        return "検索で条件に合う曲が見つかりませんでした"
+    # 生ERROR行を拾って短縮
+    for line in (text or "").splitlines():
+        if "ERROR:" in line:
+            return re.sub(r'\s+', ' ', line.split("ERROR:", 1)[1]).strip()[:140]
+    return "原因不明（取得できませんでした）"
 
 def download_one(it):
     safe = it["safe"]
@@ -82,14 +107,18 @@ def download_one(it):
         cmd = common + ["--max-downloads", "1",
                         "--match-filter", f"duration>{MIN_DUR} & duration<{MAX_DUR}",
                         f"scsearch{SEARCH_N}:{it['target']}"]
+    err_text = ""
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        err_text = (p.stderr or "") + "\n" + (p.stdout or "")
     except subprocess.TimeoutExpired:
-        log("   ⏱ timeout")
+        log("   ⏱ timeout"); return False, None, "タイムアウト（時間がかかりすぎ）"
     except FileNotFoundError:
-        log("❌ yt-dlp not found"); return False, None
+        log("❌ yt-dlp not found"); return False, None, "サーバー設定エラー（yt-dlp未検出）"
     f = os.path.join(OUTDIR, safe + ".mp3")
-    return (True, f) if os.path.exists(f) else (False, None)
+    if os.path.exists(f):
+        return True, f, None
+    return False, None, classify_error(it["kind"], err_text)
 
 def worker(items):
     with LOCK:
@@ -107,15 +136,15 @@ def worker(items):
             with LOCK:
                 if STATE["stop"]: log("■ 停止"); _finish(); return
             if it["status"] == "done": continue
-            it["status"] = "downloading"
+            it["status"] = "downloading"; it["error"] = None
             log(f"[P{p}][{it['idx']}/{total}]({it['kind']}) {it['target']}")
-            ok, f = download_one(it)
+            ok, f, err = download_one(it)
             if ok:
-                it["status"], it["file"] = "done", os.path.basename(f)
+                it["status"], it["file"], it["error"] = "done", os.path.basename(f), None
                 log("   ✅ OK"); time.sleep(SLEEP_OK)
             else:
-                it["status"] = "missing"; missing += 1
-                log("   ⏭ 未取得"); time.sleep(SLEEP_MISS)
+                it["status"], it["error"] = "missing", err; missing += 1
+                log(f"   ⏭ 未取得: {err}"); time.sleep(SLEEP_MISS)
         done = sum(1 for x in items if x["status"] == "done")
         log(f"=== パス{p}: {done}/{total} (残り{missing}) ===")
         if missing == 0: break
@@ -259,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 self._send(200, {
                     "running": STATE["running"], "finished": STATE["finished"], "pass": STATE["pass"],
-                    "items": [{k: it[k] for k in ("idx","kind","target","label","status","file")} for it in STATE["items"]],
+                    "items": [{k: it[k] for k in ("idx","kind","target","label","status","file","error")} for it in STATE["items"]],
                     "log": STATE["log"][-120:],
                 })
         elif path == "/api/lists":

@@ -82,6 +82,10 @@
   .summary b{font-size:16px;font-family:"Orbitron",sans-serif}
   .tlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
   .trow{display:flex;gap:10px;align-items:center;padding:10px 12px;background:rgba(4,2,14,.5);border:1px solid var(--line);border-radius:11px;font-size:14px}
+  .titem{display:flex;flex-direction:column}
+  .titem .trow{width:100%}
+  .errline{font-size:12px;color:#ff9bb5;background:rgba(255,45,149,.09);border:1px solid rgba(255,45,149,.28);
+    border-radius:9px;padding:6px 11px;margin:5px 0 0 2px;line-height:1.45}
   .tlabel{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;flex-shrink:0}
   .b-pending{background:rgba(140,90,255,.12);color:var(--muted)}.b-downloading{background:rgba(255,209,102,.15);color:var(--run)}
@@ -210,7 +214,9 @@ Kölsch - Grey"></textarea>
       <a class="save" id="zipLink" style="width:100%;text-align:center;display:block" href="/zip">📦 全部まとめてZIP保存</a>
     </div>
     <div class="logbox" id="logbox"></div>
-    <p class="note">⚠ レート制限を避けるため間隔を空けて取得します（放置でOK）。保存した音源は私的利用の範囲で。気に入った曲は購入を推奨します。</p>
+    <p class="note">📊 <b>進捗%</b>＝取得済み÷全体。取れなかった曲は<b>原因を表示</b>し、最大4パスまで自動で再試行します。<br>
+    🔄 <b>ページを更新しても</b>進行中のダウンロードは<b>サーバー側で継続</b>し、再表示されます（取得済みも復元）。ただしサーバーが一定時間の無操作で休止/再起動した場合は、進捗と一時ファイルはリセットされます（保存済みの曲は端末に残ります）。<br>
+    ⚠ レート制限を避けるため間隔を空けて取得します（放置でOK）。保存した音源は私的利用の範囲で。気に入った曲は購入を推奨します。</p>
   </div>
 </div>
 
@@ -277,7 +283,8 @@ function render(st){
   $('tlist').innerHTML=items.map(i=>{
     const k=i.kind==='url'?'<span class="kind k-url">URL</span>':'<span class="kind k-search">検索</span>';
     const save = i.status==='done'&&i.file?`<a class="save" href="/file/${encodeURIComponent(i.file)}" download>保存</a>`:badge(i.status);
-    return `<div class="trow">${k}<span class="tlabel">${esc(i.label)}</span>${save}</div>`;
+    const err = (i.status==='missing'&&i.error)?`<div class="errline">⚠ ${esc(i.error)}</div>`:'';
+    return `<div class="titem"><div class="trow">${k}<span class="tlabel">${esc(i.label)}</span>${save}</div>${err}</div>`;
   }).join('');
   $('logbox').textContent=(st.log||[]).join('\n');
   if($('logbox').classList.contains('show')) $('logbox').scrollTop=$('logbox').scrollHeight;
