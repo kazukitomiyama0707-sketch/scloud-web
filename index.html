@@ -109,10 +109,10 @@
   .tab:hover{color:#fff;border-color:var(--cyan)}
   .tab.active{background:linear-gradient(120deg,var(--cyan),var(--purple) 55%,var(--magenta));color:#fff;border-color:transparent;
     box-shadow:0 4px 18px rgba(162,75,255,.4),0 0 16px rgba(0,229,255,.3)}
-  select,#q{width:100%;padding:12px;border-radius:11px;border:1px solid var(--line);background:rgba(4,2,14,.6);color:var(--text);font-size:15px}
-  select:focus,#q:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,229,255,.16)}
+  select,#q,#oneUrl{width:100%;padding:12px;border-radius:11px;border:1px solid var(--line);background:rgba(4,2,14,.6);color:var(--text);font-size:15px}
+  select:focus,#q:focus,#oneUrl:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,229,255,.16)}
   .srow{display:flex;gap:8px;flex-wrap:wrap}
-  .srow #q{flex:1;min-width:150px}
+  .srow #q,.srow #oneUrl{flex:1;min-width:150px}
   .srow select{width:auto}
   .srow .btn-primary{width:auto;padding:12px 20px}
   .selbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0 8px}
@@ -152,6 +152,15 @@
 <div class="wrap" id="app" style="display:none">
   <header><div class="logo">🎧</div><h1>DJ Track Downloader</h1></header>
   <p class="sub">SoundCloud の <b>URL</b> か <b>曲名リスト</b>（Artist - Title）を貼って開始。完了した曲は「保存」から<b>ファイルに保存</b>できます。</p>
+
+  <div class="card" id="oneCard">
+    <h2>🎵 1曲だけダウンロード（URL）</h2>
+    <div class="srow">
+      <input id="oneUrl" type="text" inputmode="url" placeholder="https://soundcloud.com/... を貼り付け">
+      <button class="btn-primary" id="oneBtn">⬇ この1曲</button>
+    </div>
+    <div id="oneErr" class="err"></div>
+  </div>
 
   <div class="card" id="browseCard">
     <div class="tabs">
@@ -259,16 +268,30 @@ async function login(){
   else { $('loginErr').textContent='パスワードが違います。'; }
 }
 
+async function startWith(text, btn){
+  btn && (btn.disabled=true);
+  try{
+    const r=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    if(r.status===401){ location.reload(); return false; }
+    if(r.status===409){ alert('すでに実行中です。完了してから追加してください。'); btn&&(btn.disabled=false); return false; }
+    if(!r.ok){ const e=await r.json().catch(()=>({})); alert('開始できません: '+(e.error||r.status)); btn&&(btn.disabled=false); return false; }
+    $('progCard').classList.remove('hidden'); startPoll();
+    $('progCard').scrollIntoView({behavior:'smooth'});
+    return true;
+  }catch(e){ alert('サーバーに接続できません。'); btn&&(btn.disabled=false); return false; }
+}
+
 async function start(){
   const it=parse(); if(!it.length){alert('URL か 曲名を入力してください。');return;}
-  $('startBtn').disabled=true;
-  try{
-    const r=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:$('input').value})});
-    if(r.status===401){ location.reload(); return; }
-    if(r.status===409){ alert('すでに実行中です。'); }
-    else if(!r.ok){ const e=await r.json().catch(()=>({})); alert('開始できません: '+(e.error||r.status)); $('startBtn').disabled=false; return; }
-    $('progCard').classList.remove('hidden'); startPoll();
-  }catch(e){ alert('サーバーに接続できません。'); $('startBtn').disabled=false; }
+  await startWith($('input').value, $('startBtn'));
+}
+
+async function oneDownload(){
+  const url=$('oneUrl').value.trim();
+  $('oneErr').textContent='';
+  if(!ANY_URL.test(url)){ $('oneErr').textContent='SoundCloud の URL を貼り付けてください（http… で始まる）。'; return; }
+  const ok=await startWith(url, $('oneBtn'));
+  if(ok){ $('oneUrl').value=''; setTimeout(()=>$('oneBtn').disabled=false, 1200); }
 }
 
 function badge(s){const m={pending:['b-pending','待機'],downloading:['b-downloading','取得中'],done:['b-done','完了'],missing:['b-missing','再試行待ち']};const[c,t]=m[s]||m.pending;return `<span class="badge ${c}">${t}</span>`;}
@@ -370,6 +393,8 @@ $('q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
 $('selAll').addEventListener('change',e=>{ document.querySelectorAll('.chk').forEach(c=>c.checked=e.target.checked); updateSel(); });
 $('dlSel').addEventListener('click',downloadSelected);
 
+$('oneBtn').addEventListener('click',oneDownload);
+$('oneUrl').addEventListener('keydown',e=>{if(e.key==='Enter')oneDownload();});
 $('loginBtn').addEventListener('click',login);
 $('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 $('startBtn').addEventListener('click',start);
